@@ -2,7 +2,6 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
-import { restrictToWindowEdges } from '@dnd-kit/modifiers';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useAssignmentSheet, type SheetRow, type SheetCell, type SheetColumn, type CompPlayer } from '../../hooks/useAssignmentSheet';
@@ -10,7 +9,6 @@ import { getClassColor } from '../../utils/classColors';
 import { canEditAssignments } from '../../types';
 import type { UserRole } from '../../types';
 import { supabase } from '../../utils/supabase';
-import { HelpModal } from '../ui/HelpModal';
 
 // ─── Raid markers ─────────────────────────────────────────────────────────────
 
@@ -36,7 +34,7 @@ function RaidMarkerIcon({ markerKey, size = 18 }: { markerKey: string; size?: nu
     case 'square':   return <svg width={s} height={s} viewBox="0 0 20 20"><rect x="1.5" y="1.5" width="17" height="17" rx="2" fill="#4169E1" stroke="#2244AA" strokeWidth="0.5"/><rect x="5" y="5" width="10" height="10" rx="1" fill="none" stroke="#88AAFF" strokeWidth="1" opacity="0.4"/></svg>;
     case 'cross':    return <svg width={s} height={s} viewBox="0 0 20 20"><line x1="3" y1="3" x2="17" y2="17" stroke="#DD2222" strokeWidth="4.5" strokeLinecap="round"/><line x1="17" y1="3" x2="3" y2="17" stroke="#DD2222" strokeWidth="4.5" strokeLinecap="round"/></svg>;
     case 'skull':    return (<svg width={s} height={s} viewBox="0 0 20 20"><ellipse cx="10" cy="8.5" rx="7.5" ry="7" fill="#E0E0E0" stroke="#999" strokeWidth="0.5"/><rect x="5.5" y="14" width="9" height="5" rx="1.5" fill="#E0E0E0" stroke="#999" strokeWidth="0.5"/><circle cx="7.5" cy="8.5" r="2" fill="#555"/><circle cx="12.5" cy="8.5" r="2" fill="#555"/><line x1="10" y1="14.5" x2="10" y2="19" stroke="#aaa" strokeWidth="1.5"/><line x1="7.5" y1="14.5" x2="7.5" y2="19" stroke="#aaa" strokeWidth="1" opacity="0.5"/><line x1="12.5" y1="14.5" x2="12.5" y2="19" stroke="#aaa" strokeWidth="1" opacity="0.5"/></svg>);
-    default:         return <span className="text-xs">{markerKey}</span>;
+    default:         return <span className="text-xs text-gray-500">{markerKey}</span>;
   }
 }
 
@@ -122,15 +120,15 @@ function PlayerPicker({ anchor, compPool, profiles, onSelect, onClose }: {
   return ReactDOM.createPortal(
     <>
       <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={onClose} />
-      <div style={style} className="bg-[var(--color-lw-card)] border border-[var(--color-lw-border)] rounded-lg shadow-2xl max-h-[240px] flex flex-col overflow-hidden">
-        <div className="p-1.5 border-b border-[var(--color-lw-border-sub)]">
+      <div style={style} className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl max-h-[240px] flex flex-col overflow-hidden">
+        <div className="p-1.5 border-b border-gray-800">
           <input
             ref={inputRef}
             value={search}
             onChange={e => setSearch(e.target.value)}
             onKeyDown={e => e.key === 'Escape' && onClose()}
             placeholder="Search player…"
-            className="w-full bg-[var(--color-lw-elevated)] border border-[var(--color-lw-border)] rounded px-2 py-1 text-xs text-[var(--color-lw-text)] focus:outline-none focus:border-[var(--color-lw-fel-400)]/50"
+            className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-yellow-500/50"
           />
         </div>
         <div className="overflow-y-auto">
@@ -140,7 +138,7 @@ function PlayerPicker({ anchor, compPool, profiles, onSelect, onClose }: {
               <button
                 key={o.name}
                 onClick={() => { onSelect(o.name, o.cls); onClose(); }}
-                className="w-full text-left px-2 py-1 hover:bg-[var(--color-lw-elevated)]/60 transition-colors"
+                className="w-full text-left px-2 py-1 hover:bg-gray-800/60 transition-colors"
               >
                 <span
                   style={{ backgroundColor: color + '28', borderColor: color + '55', color }}
@@ -151,7 +149,7 @@ function PlayerPicker({ anchor, compPool, profiles, onSelect, onClose }: {
               </button>
             );
           })}
-          {filtered.length === 0 && <p className="text-[11px] text-[var(--color-lw-text-muted)] px-3 py-2 italic">No players found</p>}
+          {filtered.length === 0 && <p className="text-[11px] text-gray-600 px-3 py-2 italic">No players found</p>}
         </div>
       </div>
     </>,
@@ -159,18 +157,14 @@ function PlayerPicker({ anchor, compPool, profiles, onSelect, onClose }: {
   );
 }
 
-// ─── Droppable + draggable slot ───────────────────────────────────────────────
+// ─── Droppable role slot ──────────────────────────────────────────────────────
 
 function DroppableSlot({ row, compPool, profiles, onAssign, onClear, canWrite }: {
   row: SheetRow; compPool: CompPlayer[]; profiles: string[];
   onAssign: (name: string, cls: string | null) => void;
   onClear: () => void; canWrite: boolean;
 }) {
-  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `r:${row.id}`, disabled: !canWrite });
-  const { setNodeRef: setDragRef, listeners, attributes, isDragging } = useDraggable({
-    id: `slot:${row.id}`,
-    disabled: !canWrite || !row.player_name,
-  });
+  const { setNodeRef, isOver } = useDroppable({ id: `r:${row.id}`, disabled: !canWrite });
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const color = resolveColor(row.player_class);
 
@@ -178,33 +172,26 @@ function DroppableSlot({ row, compPool, profiles, onAssign, onClear, canWrite }:
     setAnchor(e.currentTarget.getBoundingClientRect());
   };
 
-  const setRef = (el: HTMLElement | null) => {
-    setDropRef(el);
-  };
-
   return (
-    <div ref={setRef} className={`min-h-[24px] rounded px-1.5 py-0.5 flex items-center gap-1 transition-colors ${isOver ? 'ring-1 ring-[var(--color-lw-gold-400)]/60 bg-[var(--color-lw-gold-400)]/10' : ''}`}>
+    <div ref={setNodeRef} className={`min-h-[24px] rounded px-1.5 py-0.5 flex items-center gap-1 transition-colors ${isOver ? 'ring-1 ring-yellow-500/60 bg-yellow-500/10' : ''}`}>
       {row.player_name ? (
         <div className="flex items-center gap-1 w-full">
           <span
-            ref={setDragRef}
-            {...listeners}
-            {...attributes}
             onClick={canWrite ? openPicker : undefined}
-            style={{ backgroundColor: color + '28', borderColor: color + '55', color, opacity: isDragging ? 0.4 : 1 }}
-            className={`text-xs font-medium px-2.5 py-0.5 rounded-full border flex-1 truncate ${canWrite ? 'cursor-grab hover:brightness-125' : ''}`}
+            style={{ backgroundColor: color + '28', borderColor: color + '55', color }}
+            className={`text-xs font-medium px-2.5 py-0.5 rounded-full border flex-1 truncate ${canWrite ? 'cursor-pointer hover:brightness-125' : ''}`}
           >
             {row.player_name}
           </span>
-          {canWrite && <button onClick={onClear} className="text-[var(--color-lw-border)] hover:text-[var(--color-lw-text-muted)] text-[10px] flex-shrink-0">✕</button>}
+          {canWrite && <button onClick={onClear} className="text-gray-700 hover:text-gray-400 text-[10px] flex-shrink-0">✕</button>}
         </div>
       ) : (
         <div className="flex items-center gap-1 w-full">
-          <span className="text-[11px] text-[var(--color-lw-text-muted)]/40 italic flex-1">{canWrite ? 'drag or pick' : '—'}</span>
+          <span className="text-[11px] text-gray-700 italic flex-1">{canWrite ? 'drag or pick' : '—'}</span>
           {canWrite && (
             <button
               onClick={openPicker}
-              className="text-[var(--color-lw-text-muted)] hover:text-[var(--color-lw-text-sub)] flex-shrink-0 text-base leading-none px-0.5 transition-colors"
+              className="text-gray-500 hover:text-gray-200 flex-shrink-0 text-base leading-none px-0.5 transition-colors"
               title="Pick player"
             >
               ⌄
@@ -267,7 +254,7 @@ function AssignmentCell({ cell, rows, canWrite, onSave }: {
   }
   if (cell?.text_value) {
     displayParts.push(
-      <span key="text" className="text-xs text-[var(--color-lw-text-sub)] inline-flex items-center gap-0.5 flex-wrap">{renderMarkerText(cell.text_value)}</span>
+      <span key="text" className="text-xs text-gray-300 inline-flex items-center gap-0.5 flex-wrap">{renderMarkerText(cell.text_value)}</span>
     );
   }
   const display = displayParts.length > 0 ? <div className="flex items-center gap-1 flex-wrap">{displayParts}</div> : null;
@@ -276,18 +263,18 @@ function AssignmentCell({ cell, rows, canWrite, onSave }: {
     const unselected = rows.filter(r => !refs.includes(r.id));
     return (
       <div className="relative z-30">
-        <div className="absolute top-0 left-0 bg-[var(--color-lw-card)] border border-[var(--color-lw-border)] rounded-lg shadow-2xl p-3 min-w-[220px]">
+        <div className="absolute top-0 left-0 bg-gray-950 border border-gray-700 rounded-lg shadow-2xl p-3 min-w-[220px]">
           <div className="space-y-2">
             <div>
-              <p className="text-[10px] text-[var(--color-lw-text-muted)] uppercase tracking-wider mb-1">Link to roles</p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Link to roles</p>
               {refs.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-1.5">
                   {refs.map(id => {
                     const r = rows.find(x => x.id === id);
                     return (
-                      <span key={id} className="flex items-center gap-1 text-[11px] bg-[var(--color-lw-elevated)] text-[var(--color-lw-text-sub)] rounded-full px-2 py-0.5">
+                      <span key={id} className="flex items-center gap-1 text-[11px] bg-gray-800 text-gray-300 rounded-full px-2 py-0.5">
                         {r?.label ?? id}
-                        <button onClick={() => removeRef(id)} className="text-[var(--color-lw-text-muted)] hover:text-red-400 leading-none">✕</button>
+                        <button onClick={() => removeRef(id)} className="text-gray-600 hover:text-red-400 leading-none">✕</button>
                       </span>
                     );
                   })}
@@ -296,20 +283,20 @@ function AssignmentCell({ cell, rows, canWrite, onSave }: {
               <select
                 value=""
                 onChange={e => { if (e.target.value) addRef(Number(e.target.value)); }}
-                className="w-full bg-[var(--color-lw-elevated)] border border-[var(--color-lw-border)] rounded px-2 py-1 text-xs text-[var(--color-lw-text)] focus:outline-none focus:border-[var(--color-lw-fel-400)]/50"
+                className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-yellow-500/50"
               >
                 <option value="">{refs.length === 0 ? '— none —' : '+ add role…'}</option>
                 {unselected.map(r => <option key={r.id} value={r.id}>{r.label}{r.player_name ? ` · ${r.player_name}` : ''}</option>)}
               </select>
             </div>
             <div>
-              <p className="text-[10px] text-[var(--color-lw-text-muted)] uppercase tracking-wider mb-1">Custom text</p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Custom text</p>
               <input
                 autoFocus
                 value={text}
                 onChange={e => setText(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
-                className="w-full bg-[var(--color-lw-elevated)] border border-[var(--color-lw-border)] rounded px-2 py-1 text-xs text-[var(--color-lw-text)] focus:outline-none focus:border-[var(--color-lw-fel-400)]/50"
+                className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-yellow-500/50"
                 placeholder="e.g. Boss, MT healer…"
               />
               <div className="flex gap-1.5 mt-1.5 flex-wrap">
@@ -321,9 +308,9 @@ function AssignmentCell({ cell, rows, canWrite, onSave }: {
               </div>
             </div>
             <div className="flex gap-1.5">
-              <button onClick={save} className="flex-1 bg-[var(--color-lw-gold-400)] hover:bg-[var(--color-lw-gold-300)] text-[var(--color-lw-base)] rounded px-2 py-1 text-xs font-semibold">Save</button>
-              <button onClick={() => { onSave(null); setEditing(false); }} className="text-xs text-[var(--color-lw-text-muted)] hover:text-red-400 px-2">Clear</button>
-              <button onClick={() => setEditing(false)} className="text-xs text-[var(--color-lw-text-muted)] hover:text-[var(--color-lw-text-sub)] px-2">✕</button>
+              <button onClick={save} className="flex-1 bg-yellow-500 hover:bg-yellow-400 text-gray-950 rounded px-2 py-1 text-xs font-semibold">Save</button>
+              <button onClick={() => { onSave(null); setEditing(false); }} className="text-xs text-gray-600 hover:text-red-400 px-2">Clear</button>
+              <button onClick={() => setEditing(false)} className="text-xs text-gray-600 hover:text-gray-300 px-2">✕</button>
             </div>
           </div>
         </div>
@@ -332,8 +319,8 @@ function AssignmentCell({ cell, rows, canWrite, onSave }: {
   }
 
   return (
-    <div onClick={open} className={`min-h-[30px] w-full px-2 py-1 flex items-center justify-center group-hover/row:bg-[var(--color-lw-fel-500)]/[0.05] ${canWrite ? 'cursor-pointer hover:bg-[var(--color-lw-elevated)]/30' : ''}`}>
-      {display ?? (canWrite ? <span className="text-[10px] text-[var(--color-lw-border)]">+</span> : <span className="text-xs text-[var(--color-lw-border)]">—</span>)}
+    <div onClick={open} className={`min-h-[30px] w-full px-2 py-1 flex items-center justify-center ${canWrite ? 'cursor-pointer hover:bg-gray-700/30' : ''}`}>
+      {display ?? (canWrite ? <span className="text-[10px] text-gray-800">+</span> : <span className="text-xs text-gray-800">—</span>)}
     </div>
   );
 }
@@ -359,14 +346,14 @@ function BossColumnHeader({ col, canWrite, onUpload, onRemove, onEnlarge }: {
 
   return (
     <div className="flex flex-col items-center gap-1.5 w-full">
-      <span className="text-sm font-bold text-[var(--color-lw-gold-300)] text-center leading-tight px-1">{col.label}</span>
+      <span className="text-sm font-bold text-yellow-300 text-center leading-tight px-1">{col.label}</span>
       <div className="w-full">
         {col.image_path ? (
           <div className="relative group/th">
             <img
               src={col.image_path} alt={col.label}
               onClick={() => onEnlarge(col.image_path!)}
-              className="h-12 w-full object-cover rounded-md border border-[var(--color-lw-border)] cursor-pointer hover:opacity-80 hover:border-[var(--color-lw-border-sub)] transition-all"
+              className="h-12 w-full object-cover rounded-md border border-gray-700/80 cursor-pointer hover:opacity-80 hover:border-gray-500 transition-all"
             />
             {canWrite && (
               <div
@@ -377,12 +364,12 @@ function BossColumnHeader({ col, canWrite, onUpload, onRemove, onEnlarge }: {
                   <>
                     <span className="text-[9px] text-white font-semibold">Delete?</span>
                     <button onClick={e => { e.stopPropagation(); onRemove(); setConfirmDelete(false); }} className="text-[9px] bg-red-600 hover:bg-red-500 text-white rounded px-1.5 py-0.5">Yes</button>
-                    <button onClick={e => { e.stopPropagation(); setConfirmDelete(false); }} className="text-[9px] bg-[var(--color-lw-elevated)] hover:bg-[var(--color-lw-surface)] text-[var(--color-lw-text-sub)] rounded px-1.5 py-0.5">No</button>
+                    <button onClick={e => { e.stopPropagation(); setConfirmDelete(false); }} className="text-[9px] bg-gray-700 hover:bg-gray-600 text-gray-200 rounded px-1.5 py-0.5">No</button>
                   </>
                 ) : (
                   <>
-                    <button onClick={e => { e.stopPropagation(); inputRef.current?.click(); }} className="text-[9px] bg-black/70 text-[var(--color-lw-text-sub)] rounded px-1.5 py-0.5 hover:bg-black/90">↑</button>
-                    <button onClick={e => { e.stopPropagation(); setConfirmDelete(true); }} className="text-[9px] bg-black/70 text-red-400 rounded px-1.5 py-0.5 hover:bg-black/90">✕</button>
+                    <button onClick={e => { e.stopPropagation(); inputRef.current?.click(); }} className="text-[9px] bg-gray-900/90 text-gray-300 rounded px-1.5 py-0.5 hover:bg-gray-800">↑</button>
+                    <button onClick={e => { e.stopPropagation(); setConfirmDelete(true); }} className="text-[9px] bg-gray-900/90 text-red-400 rounded px-1.5 py-0.5 hover:bg-gray-800">✕</button>
                   </>
                 )}
               </div>
@@ -392,7 +379,7 @@ function BossColumnHeader({ col, canWrite, onUpload, onRemove, onEnlarge }: {
           <button
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
-            className="w-full h-8 border border-dashed border-[var(--color-lw-border)] hover:border-[var(--color-lw-gold-500)]/30 rounded-md text-[10px] text-[var(--color-lw-text-muted)] hover:text-[var(--color-lw-text-sub)] transition-colors disabled:opacity-50"
+            className="w-full h-8 border border-dashed border-gray-700 hover:border-yellow-500/30 rounded-md text-[10px] text-gray-700 hover:text-gray-500 transition-colors disabled:opacity-50"
           >
             {uploading ? '⏳' : '+ image'}
           </button>
@@ -419,21 +406,21 @@ function SortableTableRow({ row, rowBg, columns, cellMap, allRows, compPool, pro
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: row.id, disabled: !canWrite });
   const style: React.CSSProperties = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.25 : 1 };
   return (
-    <tr ref={setNodeRef} style={style} className={`${rowBg} border-b border-[var(--color-lw-border-sub)] group/row transition-colors`}>
-      <td className={`sticky left-0 z-10 ${rowBg} px-3 py-1 text-xs text-[var(--color-lw-text-sub)] font-medium border-r border-[var(--color-lw-border)] whitespace-nowrap group-hover/row:bg-[var(--color-lw-fel-500)]/[0.06]`}>
+    <tr ref={setNodeRef} style={style} className={`${rowBg} border-b border-gray-800/50 group/row`}>
+      <td className={`sticky left-0 z-10 ${rowBg} px-3 py-1 text-xs text-gray-300 font-medium border-r border-gray-800 whitespace-nowrap`}>
         <div className="flex items-center gap-1.5">
           {canWrite && (
-            <span {...attributes} {...listeners} className="cursor-grab text-[var(--color-lw-border)] hover:text-[var(--color-lw-text-muted)] opacity-0 group-hover/row:opacity-100 transition-opacity select-none touch-none" title="Drag to reorder">⠿</span>
+            <span {...attributes} {...listeners} className="cursor-grab text-gray-700 hover:text-gray-400 opacity-0 group-hover/row:opacity-100 transition-opacity select-none touch-none" title="Drag to reorder">⠿</span>
           )}
           <span>{row.label}</span>
-          {canWrite && <button onClick={onDelete} className="opacity-0 group-hover/row:opacity-100 text-[10px] text-[var(--color-lw-border)] hover:text-red-500 transition-opacity ml-auto" title="Delete row">✕</button>}
+          {canWrite && <button onClick={onDelete} className="opacity-0 group-hover/row:opacity-100 text-[10px] text-gray-700 hover:text-red-500 transition-opacity ml-auto" title="Delete row">✕</button>}
         </div>
       </td>
-      <td className={`sticky left-[90px] z-10 ${rowBg} px-2 py-1 border-r border-[var(--color-lw-border)] group-hover/row:bg-[var(--color-lw-fel-500)]/[0.06]`}>
+      <td className={`sticky left-[90px] z-10 ${rowBg} px-2 py-1 border-r border-gray-800`}>
         <DroppableSlot row={row} compPool={compPool} profiles={profiles} onAssign={onAssign} onClear={onClear} canWrite={canWrite} />
       </td>
       {columns.map((col, colIdx) => (
-        <td key={col.id} className={`border-r border-[var(--color-lw-border-sub)]/40 relative ${colIdx % 2 !== 0 ? 'bg-black/[0.06]' : ''}`}>
+        <td key={col.id} className={`border-r border-gray-800/40 relative ${colIdx % 2 !== 0 ? 'bg-black/[0.12]' : ''}`}>
           <AssignmentCell cell={cellMap.get(`${row.id}-${col.id}`)} rows={allRows} canWrite={canWrite} onSave={val => onSave(col.id, val)} />
         </td>
       ))}
@@ -443,9 +430,9 @@ function SortableTableRow({ row, rowBg, columns, cellMap, allRows, compPool, pro
 
 // ─── Main view ────────────────────────────────────────────────────────────────
 
-interface Props { role: UserRole | null; username: string; helpContent?: string; }
+interface Props { role: UserRole | null; username: string; }
 
-export function AssignmentSheetView({ role, username, helpContent }: Props) {
+export function AssignmentSheetView({ role, username }: Props) {
   const { sheets, columns, rows, cells, loading, profiles, sections, selectedSheetId, setSelectedSheetId, assignPlayer, clearPlayer, setCell, importComp, uploadImage, removeImage, addRow, deleteRow, reorderRows } = useAssignmentSheet();
 
   const canWrite = canEditAssignments(role);
@@ -462,7 +449,6 @@ export function AssignmentSheetView({ role, username, helpContent }: Props) {
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | number | null>(null);
   const [presentUsers, setPresentUsers] = useState<string[]>([]);
-  const [showHelp, setShowHelp] = useState(false);
 
   // Presence: track who else is on this sheet
   useEffect(() => {
@@ -508,34 +494,13 @@ export function AssignmentSheetView({ role, username, helpContent }: Props) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const activeStr = String(active.id);
-    const overStr = String(over.id);
-
     if (activeStr.startsWith('p:')) {
-      // Drag from player pool to a row slot
       const name = activeStr.replace(/^p:/, '');
-      const rowId = Number(overStr.replace(/^r:/, ''));
+      const rowId = Number(String(over.id).replace(/^r:/, ''));
       const player = compPool.find(p => p.name === name);
       if (!player || !rowId) return;
       assignPlayer(rowId, player.name, player.color || player.className);
-    } else if (activeStr.startsWith('slot:')) {
-      // Drag an assigned player from one slot to another (move or swap)
-      if (overStr.startsWith('r:')) {
-        const sourceRowId = Number(activeStr.slice(5));
-        const targetRowId = Number(overStr.slice(2));
-        if (sourceRowId === targetRowId) return;
-        const sourceRow = rows.find(r => r.id === sourceRowId);
-        if (!sourceRow?.player_name) return;
-        const targetRow = rows.find(r => r.id === targetRowId);
-        if (targetRow?.player_name) {
-          assignPlayer(targetRowId, sourceRow.player_name, sourceRow.player_class);
-          assignPlayer(sourceRowId, targetRow.player_name, targetRow.player_class);
-        } else {
-          assignPlayer(targetRowId, sourceRow.player_name, sourceRow.player_class);
-          clearPlayer(sourceRowId);
-        }
-      }
     } else {
-      // Row reordering via sortable
       const overId = Number(over.id);
       if (!overId) return;
       const activeRow = rows.find(r => r.id === Number(active.id));
@@ -561,33 +526,20 @@ export function AssignmentSheetView({ role, username, helpContent }: Props) {
     setAddingRowSection(null);
   }
 
-  if (loading) return <div className="flex items-center justify-center py-20 text-[var(--color-lw-text-muted)] text-sm"><span className="animate-spin mr-2">⏳</span> Loading…</div>;
+  if (loading) return <div className="flex items-center justify-center py-20 text-gray-600 text-sm"><span className="animate-spin mr-2">⏳</span> Loading…</div>;
 
   return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      autoScroll={{ enabled: true, layoutShiftCompensation: false }}
-    >
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="max-w-[1600px] mx-auto px-4 py-6 space-y-4">
 
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="text-xl font-bold text-[var(--color-lw-text)]">Raid Assignments</h2>
-            {helpContent && (
-              <button
-                onClick={() => setShowHelp(true)}
-                className="w-5 h-5 rounded-full bg-[var(--color-lw-elevated)] border border-[var(--color-lw-border)] hover:border-[var(--color-lw-fel-400)]/50 hover:text-[var(--color-lw-fel-400)] text-[var(--color-lw-text-muted)] text-xs font-bold flex items-center justify-center transition-colors shrink-0"
-              >
-                ?
-              </button>
-            )}
+            <h2 className="text-xl font-bold text-white">Raid Assignments</h2>
             {presentUsers.length > 0 && (
               <div className="flex items-center gap-1.5">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-xs text-[var(--color-lw-text-muted)]">Also here:</span>
+                <span className="text-xs text-gray-500">Also here:</span>
                 {presentUsers.map(u => (
                   <span key={u} className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">{u}</span>
                 ))}
@@ -595,7 +547,7 @@ export function AssignmentSheetView({ role, username, helpContent }: Props) {
             )}
           </div>
           {canWrite && (
-            <button onClick={() => setShowImport(v => !v)} className="text-xs px-3 py-1.5 rounded-lg bg-[var(--color-lw-elevated)] hover:bg-[var(--color-lw-surface)] text-[var(--color-lw-text-sub)] border border-[var(--color-lw-border)]">
+            <button onClick={() => setShowImport(v => !v)} className="text-xs px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700">
               {showImport ? 'Hide import' : '⬆ Import comp JSON'}
             </button>
           )}
@@ -603,22 +555,22 @@ export function AssignmentSheetView({ role, username, helpContent }: Props) {
 
         {/* Import panel */}
         {showImport && canWrite && (
-          <div className="bg-[var(--color-lw-card)] border border-[var(--color-lw-border)] rounded-xl p-4 space-y-3">
-            <p className="text-xs text-[var(--color-lw-text-muted)]">Paste the raid comp JSON. Existing assignments are kept if the player is still in the comp; missing players are cleared.</p>
-            <textarea value={compJson} onChange={e => setCompJson(e.target.value)} rows={4} className="w-full bg-[var(--color-lw-elevated)] border border-[var(--color-lw-border)] rounded-lg px-3 py-2 text-xs text-[var(--color-lw-text)] font-mono focus:outline-none focus:border-[var(--color-lw-fel-400)]/50" placeholder='{"slots":[...]}' />
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+            <p className="text-xs text-gray-500">Paste the raid comp JSON. Existing assignments are kept if the player is still in the comp; missing players are cleared.</p>
+            <textarea value={compJson} onChange={e => setCompJson(e.target.value)} rows={4} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300 font-mono focus:outline-none focus:border-yellow-500/50" placeholder='{"slots":[...]}' />
             {importErr && <p className="text-xs text-red-400">{importErr}</p>}
-            <button onClick={handleImport} className="bg-[var(--color-lw-gold-400)] hover:bg-[var(--color-lw-gold-300)] text-[var(--color-lw-base)] font-semibold text-xs px-4 py-1.5 rounded-lg">Import</button>
+            <button onClick={handleImport} className="bg-yellow-500 hover:bg-yellow-400 text-gray-950 font-semibold text-xs px-4 py-1.5 rounded-lg">Import</button>
           </div>
         )}
 
         {/* Player pool */}
         {pool.length > 0 && (
-          <div className="bg-[var(--color-lw-card)] border border-[var(--color-lw-border)] rounded-xl p-3 space-y-2">
-            <p className="text-[11px] text-[var(--color-lw-text-muted)] uppercase tracking-wider font-semibold">Unassigned players — drag to a role slot</p>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-2">
+            <p className="text-[11px] text-gray-600 uppercase tracking-wider font-semibold">Unassigned players — drag to a role slot</p>
             <div className="space-y-1.5">
               {groupedPool.map(([group, players]) => (
                 <div key={group} className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] text-[var(--color-lw-text-muted)] w-12 flex-shrink-0">Group {group}</span>
+                  <span className="text-[10px] text-gray-700 w-12 flex-shrink-0">Group {group}</span>
                   {players.map(p => <DraggablePlayerPill key={p.name} player={p} />)}
                 </div>
               ))}
@@ -629,21 +581,21 @@ export function AssignmentSheetView({ role, username, helpContent }: Props) {
         {/* Sheet tabs */}
         <div className="flex gap-1">
           {sheets.map(sheet => (
-            <button key={sheet.id} onClick={() => setSelectedSheetId(sheet.id)} className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-colors ${selectedSheetId === sheet.id ? 'bg-[var(--color-lw-gold-400)] text-[var(--color-lw-base)]' : 'bg-[var(--color-lw-elevated)] text-[var(--color-lw-text-muted)] hover:text-[var(--color-lw-text-sub)] hover:bg-[var(--color-lw-surface)]'}`}>
+            <button key={sheet.id} onClick={() => setSelectedSheetId(sheet.id)} className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-colors ${selectedSheetId === sheet.id ? 'bg-yellow-500 text-gray-950' : 'bg-gray-800 text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}>
               {sheet.title}
             </button>
           ))}
         </div>
 
         {/* Grid */}
-        <div className="overflow-x-auto rounded-xl border border-[var(--color-lw-border)]">
+        <div className="overflow-x-auto rounded-xl border border-gray-800">
           <table className="border-collapse text-sm w-full">
             <thead>
-              <tr className="bg-[var(--color-lw-elevated)]">
-                <th className="sticky left-0 z-10 bg-[var(--color-lw-elevated)] text-left px-3 py-2 text-xs font-semibold text-[var(--color-lw-text-muted)] uppercase tracking-wider w-[90px] min-w-[90px] border-b border-r border-[var(--color-lw-border)]">Role</th>
-                <th className="sticky left-[90px] z-10 bg-[var(--color-lw-elevated)] text-left px-3 py-2 text-xs font-semibold text-[var(--color-lw-text-muted)] uppercase tracking-wider w-[140px] min-w-[140px] border-b border-r border-[var(--color-lw-border)]">Player</th>
+              <tr className="bg-gray-800">
+                <th className="sticky left-0 z-10 bg-gray-800 text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[90px] min-w-[90px] border-b border-r border-gray-700">Role</th>
+                <th className="sticky left-[90px] z-10 bg-gray-800 text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[140px] min-w-[140px] border-b border-r border-gray-700">Player</th>
                 {columns.map((col, colIdx) => (
-                  <th key={col.id} className={`text-center px-2 py-2 border-b border-r border-[var(--color-lw-border)] min-w-[80px] ${colIdx % 2 === 0 ? 'bg-[var(--color-lw-elevated)]' : 'bg-[var(--color-lw-surface)]'}`}>
+                  <th key={col.id} className={`text-center px-2 py-2 border-b border-r border-gray-700 min-w-[80px] ${colIdx % 2 === 0 ? 'bg-gray-800' : 'bg-gray-900'}`}>
                     <BossColumnHeader
                       col={col} canWrite={canWrite}
                       onUpload={f => uploadImage(col.id, f)}
@@ -667,7 +619,7 @@ export function AssignmentSheetView({ role, username, helpContent }: Props) {
                         <td
                           colSpan={2 + columns.length}
                           style={{ borderLeftColor: accent }}
-                          className="px-4 py-1.5 bg-[var(--color-lw-surface)]/70 border-y border-[var(--color-lw-border)]/80 border-l-2"
+                          className="px-4 py-1.5 bg-gray-900/70 border-y border-gray-800/80 border-l-2"
                         >
                           <span style={{ color: accent }} className="text-[10px] font-bold uppercase tracking-widest opacity-90">{section}</span>
                         </td>
@@ -676,7 +628,7 @@ export function AssignmentSheetView({ role, username, helpContent }: Props) {
                       <SortableContext items={sectionRows.map(r => r.id)} strategy={verticalListSortingStrategy}>
                         {sectionRows.map(row => {
                           const even = rowIdx++ % 2 === 0;
-                          const rowBg = even ? 'bg-[var(--color-lw-base)]' : 'bg-[var(--color-lw-elevated)]/20';
+                          const rowBg = even ? 'bg-gray-900' : 'bg-gray-800/30';
                           return (
                             <SortableTableRow
                               key={row.id}
@@ -698,19 +650,19 @@ export function AssignmentSheetView({ role, username, helpContent }: Props) {
                       </SortableContext>
 
                       {canWrite && (
-                        <tr key={`add-${section}`} className="border-b border-[var(--color-lw-border-sub)]/30">
-                          <td className="sticky left-0 z-10 bg-[var(--color-lw-base)] px-3 py-1 border-r border-[var(--color-lw-border)]" colSpan={2}>
+                        <tr key={`add-${section}`} className="border-b border-gray-800/30">
+                          <td className={`sticky left-0 z-10 bg-gray-900 px-3 py-1 border-r border-gray-800`} colSpan={2}>
                             {addingRowSection === section ? (
                               <div className="flex items-center gap-1.5">
-                                <input autoFocus value={newRowLabel} onChange={e => setNewRowLabel(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleAddRow(); if (e.key === 'Escape') { setAddingRowSection(null); setNewRowLabel(''); } }} onBlur={() => { if (!newRowLabel.trim()) setAddingRowSection(null); }} className="bg-[var(--color-lw-elevated)] border border-[var(--color-lw-border)] rounded px-2 py-0.5 text-xs text-[var(--color-lw-text)] focus:outline-none focus:border-[var(--color-lw-fel-400)]/50 w-32" placeholder="Role name…" />
-                                <button onClick={handleAddRow} className="text-[10px] text-[var(--color-lw-gold-300)] hover:text-[var(--color-lw-gold-200)]">Add</button>
-                                <button onClick={() => { setAddingRowSection(null); setNewRowLabel(''); }} className="text-[10px] text-[var(--color-lw-text-muted)]">✕</button>
+                                <input autoFocus value={newRowLabel} onChange={e => setNewRowLabel(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleAddRow(); if (e.key === 'Escape') { setAddingRowSection(null); setNewRowLabel(''); } }} onBlur={() => { if (!newRowLabel.trim()) setAddingRowSection(null); }} className="bg-gray-800 border border-gray-700 rounded px-2 py-0.5 text-xs text-gray-200 focus:outline-none focus:border-yellow-500/50 w-32" placeholder="Role name…" />
+                                <button onClick={handleAddRow} className="text-[10px] text-yellow-400 hover:text-yellow-300">Add</button>
+                                <button onClick={() => { setAddingRowSection(null); setNewRowLabel(''); }} className="text-[10px] text-gray-600">✕</button>
                               </div>
                             ) : (
-                              <button onClick={() => { setAddingRowSection(section); setNewRowLabel(''); }} className="text-[10px] text-[var(--color-lw-border)] hover:text-[var(--color-lw-text-muted)]">+ Add row</button>
+                              <button onClick={() => { setAddingRowSection(section); setNewRowLabel(''); }} className="text-[10px] text-gray-700 hover:text-gray-400">+ Add row</button>
                             )}
                           </td>
-                          {columns.map(col => <td key={col.id} className="border-r border-[var(--color-lw-border-sub)]/30" />)}
+                          {columns.map(col => <td key={col.id} className="border-r border-gray-800/30" />)}
                         </tr>
                       )}
                     </React.Fragment>
@@ -722,38 +674,13 @@ export function AssignmentSheetView({ role, username, helpContent }: Props) {
         </div>
       </div>
 
-      {/* Drag overlay */}
-      <DragOverlay modifiers={[restrictToWindowEdges]}>
-        {activeId != null ? (() => {
-          const id = String(activeId);
-          if (id.startsWith('p:')) {
-            const name = id.slice(2);
-            const player = compPool.find(p => p.name === name);
-            if (!player) return null;
-            const color = player.color || getClassColor(player.className) || '#9ca3af';
-            return (
-              <div style={{ backgroundColor: color + '33', color, borderColor: color + '66' }}
-                className="inline-flex items-center px-3 py-1 rounded-full border text-xs font-semibold whitespace-nowrap shadow-2xl">
-                {player.name}
-              </div>
-            );
-          }
-          if (id.startsWith('slot:')) {
-            const row = rows.find(r => r.id === Number(id.slice(5)));
-            if (!row?.player_name) return null;
-            const color = resolveColor(row.player_class);
-            return (
-              <div style={{ backgroundColor: color + '33', color, borderColor: color + '66' }}
-                className="inline-flex items-center px-3 py-1 rounded-lg border text-xs font-semibold whitespace-nowrap shadow-2xl rotate-1">
-                {row.player_name}
-              </div>
-            );
-          }
-          // Row reorder ghost
+      {/* Drag overlay for row reordering */}
+      <DragOverlay>
+        {activeId && !String(activeId).startsWith('p:') ? (() => {
           const row = rows.find(r => r.id === Number(activeId));
           if (!row) return null;
           return (
-            <div className="bg-[var(--color-lw-elevated)] border border-[var(--color-lw-gold-500)]/50 rounded px-3 py-1.5 shadow-2xl text-xs text-[var(--color-lw-text-sub)] opacity-90 whitespace-nowrap">
+            <div className="bg-gray-800 border border-yellow-500/50 rounded px-3 py-1.5 shadow-2xl text-xs text-gray-200 opacity-90 whitespace-nowrap">
               {row.label}{row.player_name ? ` · ${row.player_name}` : ''}
             </div>
           );
@@ -768,11 +695,6 @@ export function AssignmentSheetView({ role, username, helpContent }: Props) {
             <button onClick={() => setLightboxImage(null)} className="absolute top-2 right-2 text-white bg-black/60 hover:bg-black rounded-full w-8 h-8 flex items-center justify-center text-sm">✕</button>
           </div>
         </div>
-      )}
-
-      {/* Help modal */}
-      {showHelp && helpContent && (
-        <HelpModal title="Raid Assignments" content={helpContent} onClose={() => setShowHelp(false)} />
       )}
     </DndContext>
   );
